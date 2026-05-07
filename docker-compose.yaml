@@ -22,7 +22,7 @@ services:
       - DOTNET_RUNNING_IN_CONTAINER=true
 
     volumes:
-      # Persist logs
+      # Persist logs test
       - ./logs:/app/logs
 
       # Access to NetworkManager
