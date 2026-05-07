@@ -1,0 +1,11 @@
+﻿{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Debug",
+      "Microsoft.AspNetCore": "Warning",
+      "Docker_Wifi": "Debug",
+      "Docker_Wifi.Services": "Trace",
+      "Docker_Wifi.Background": "Debug"
+    }
+  }
+}

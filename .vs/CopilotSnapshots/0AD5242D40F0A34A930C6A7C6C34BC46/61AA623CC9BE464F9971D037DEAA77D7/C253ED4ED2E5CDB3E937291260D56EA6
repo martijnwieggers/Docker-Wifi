@@ -1,0 +1,167 @@
+﻿@page "/"
+@using Docker_Wifi.Helpers
+@using Docker_Wifi.Services
+@using Docker_Wifi.Models
+@inject WifiStateContainer StateContainer
+
+<PageTitle>WiFi Manager</PageTitle>
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1>WiFi Manager</h1>
+            <p class="lead">Manage WiFi connections and monitor Access Point clients</p>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-4 mb-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-info-circle me-2"></i>System Information
+                    </h5>
+                    <hr />
+                    <div class="mb-2">
+                        <strong>Platform:</strong> @LinuxDetectionHelper.GetPlatformInfo()
+                    </div>
+                    <div class="mb-2">
+                        <strong>Runtime:</strong> .NET 8
+                    </div>
+                    <div class="mb-2">
+                        <strong>Mode:</strong> 
+                        @if (LinuxDetectionHelper.IsLinux)
+                        {
+                            <span class="badge bg-success">Production</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-warning">Development (Mock)</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4 mb-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-wifi me-2"></i>WiFi Networks
+                    </h5>
+                    <hr />
+                    <div class="mb-2">
+                        <strong>Interface:</strong> <code>wlan0</code>
+                    </div>
+                    <div class="mb-2">
+                        <strong>Networks Found:</strong> @_state.Networks.Count
+                    </div>
+                    <div class="mb-3">
+                        <strong>Status:</strong>
+                        @if (_state.IsScanning)
+                        {
+                            <span class="badge bg-primary">Scanning...</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-success">Ready</span>
+                        }
+                    </div>
+                    <a href="/wifi-scan" class="btn btn-primary btn-sm w-100">
+                        <i class="bi bi-wifi me-1"></i> View Networks
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4 mb-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-people-fill me-2"></i>Connected Clients
+                    </h5>
+                    <hr />
+                    <div class="mb-2">
+                        <strong>Interface:</strong> <code>wlan1</code> (AP)
+                    </div>
+                    <div class="mb-2">
+                        <strong>Clients Connected:</strong> @_state.Clients.Count
+                    </div>
+                    <div class="mb-3">
+                        <strong>Last Updated:</strong>
+                        <br />
+                        <small>@_state.LastUpdated.ToLocalTime().ToString("HH:mm:ss")</small>
+                    </div>
+                    <a href="/wifi-clients" class="btn btn-primary btn-sm w-100">
+                        <i class="bi bi-people-fill me-1"></i> View Clients
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col">
+            <div class="card bg-light">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-shield-check me-2"></i>Network Configuration
+                    </h5>
+                    <hr />
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>wlan0 - WiFi Client Interface</h6>
+                            <ul class="mb-0">
+                                <li>Used for scanning available networks</li>
+                                <li>Connect to external WiFi networks</li>
+                                <li>Provides uplink/backbone connectivity</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>wlan1 - Access Point Interface</h6>
+                            <ul class="mb-0">
+                                <li><strong>Read-only monitoring</strong></li>
+                                <li>Never modified by this application</li>
+                                <li>Shows connected AP clients</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col">
+            <div class="alert alert-info">
+                <h6><i class="bi bi-lightbulb me-2"></i>Quick Start</h6>
+                <ol class="mb-0">
+                    <li>Click <strong>WiFi Networks</strong> to scan and connect to available networks</li>
+                    <li>Click <strong>Connected Clients</strong> to monitor devices connected to your Access Point</li>
+                    <li>Background services automatically refresh data every 10-15 seconds</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private WifiState _state = new();
+
+    protected override void OnInitialized()
+    {
+        _state = StateContainer.State;
+        StateContainer.OnStateChanged += OnStateChanged;
+    }
+
+    private void OnStateChanged()
+    {
+        _state = StateContainer.State;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        StateContainer.OnStateChanged -= OnStateChanged;
+    }
+}

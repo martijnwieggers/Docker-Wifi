@@ -1,0 +1,220 @@
+@page "/wifi-scan"
+@using Docker_Wifi.Models
+@using Docker_Wifi.Services
+@rendermode InteractiveServer
+
+@inject WifiStateContainer StateContainer
+@inject IWifiScannerService ScannerService
+@inject ILogger<WifiScan> Logger
+
+@implements IDisposable
+
+<PageTitle>WiFi Networks</PageTitle>
+
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col">
+            <h3>Available WiFi Networks</h3>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-primary" @onclick="RefreshNetworks" disabled="@_state.IsScanning">
+                @if (_state.IsScanning)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    <span>Scanning...</span>
+                }
+                else
+                {
+                    <i class="bi bi-arrow-clockwise me-1"></i>
+                    <span>Refresh</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    @if (_toastMessage != null)
+    {
+        <div class="alert alert-@(_toastIsSuccess ? "success" : "danger") alert-dismissible fade show" role="alert">
+            @_toastMessage
+            <button type="button" class="btn-close" @onclick="DismissToast"></button>
+        </div>
+    }
+
+    @if (_state.Networks.Count == 0)
+    {
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i>
+            @if (_state.IsScanning)
+            {
+                <span>Scanning for networks...</span>
+            }
+            else
+            {
+                <span>No networks found. Click Refresh to scan.</span>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            @foreach (var network in _state.Networks)
+            {
+                <div class="col-12 col-md-6 col-lg-4 mb-3">
+                    <div class="card h-100 @(network.IsConnected ? "border-success" : "")">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                @network.SSID
+                                @if (network.IsConnected)
+                                {
+                                    <span class="badge bg-success ms-2">Connected</span>
+                                }
+                            </h5>
+
+                            <div class="mb-2">
+                                <strong>Signal:</strong>
+                                <span class="badge @GetSignalBadgeClass(network.SignalStrength) ms-1">
+                                    @network.SignalStrength%
+                                </span>
+                                @GetSignalIcon(network.SignalStrength)
+                            </div>
+
+                            <div class="mb-2">
+                                <strong>Security:</strong>
+                                <span class="badge bg-secondary ms-1">@network.Security</span>
+                            </div>
+
+                            <div class="mb-3">
+                                <strong>Channel:</strong> @network.Channel
+                            </div>
+
+                            @if (!network.IsConnected)
+                            {
+                                <button class="btn btn-sm btn-outline-primary w-100" 
+                                        @onclick="() => ShowConnectionDialog(network)"
+                                        disabled="@_state.IsConnecting">
+                                    <i class="bi bi-wifi me-1"></i> Connect
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="mt-3">
+            <small class="text-muted">
+                Last updated: @_state.LastUpdated.ToLocalTime().ToString("HH:mm:ss")
+            </small>
+        </div>
+    }
+</div>
+
+@if (_showConnectionDialog && _selectedNetwork != null)
+{
+    <ConnectionDialog Network="_selectedNetwork" 
+                     OnClose="HideConnectionDialog"
+                     OnConnected="HandleConnectionResult" />
+}
+
+@code {
+    private WifiState _state = new();
+    private bool _showConnectionDialog;
+    private WifiNetwork? _selectedNetwork;
+    private string? _toastMessage;
+    private bool _toastIsSuccess;
+
+    protected override void OnInitialized()
+    {
+        _state = StateContainer.State;
+        StateContainer.OnStateChanged += OnStateChanged;
+    }
+
+    private void OnStateChanged()
+    {
+        _state = StateContainer.State;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RefreshNetworks()
+    {
+        try
+        {
+            await StateContainer.SetScanningAsync(true);
+            var networks = await ScannerService.ScanNetworksAsync();
+            await StateContainer.UpdateNetworksAsync(networks, false);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to refresh networks");
+            ShowToast("Failed to scan networks: " + ex.Message, false);
+        }
+        finally
+        {
+            await StateContainer.SetScanningAsync(false);
+        }
+    }
+
+    private void ShowConnectionDialog(WifiNetwork network)
+    {
+        _selectedNetwork = network;
+        _showConnectionDialog = true;
+    }
+
+    private void HideConnectionDialog()
+    {
+        _showConnectionDialog = false;
+        _selectedNetwork = null;
+    }
+
+    private async Task HandleConnectionResult(WifiConnectionResult result)
+    {
+        ShowToast(result.Message, result.Success);
+
+        if (result.Success)
+        {
+            // Refresh networks to update connected status
+            await Task.Delay(1000);
+            await RefreshNetworks();
+        }
+    }
+
+    private void ShowToast(string message, bool isSuccess)
+    {
+        _toastMessage = message;
+        _toastIsSuccess = isSuccess;
+        StateHasChanged();
+    }
+
+    private void DismissToast()
+    {
+        _toastMessage = null;
+        StateHasChanged();
+    }
+
+    private static string GetSignalBadgeClass(int strength)
+    {
+        return strength switch
+        {
+            >= 75 => "bg-success",
+            >= 50 => "bg-primary",
+            >= 25 => "bg-warning",
+            _ => "bg-danger"
+        };
+    }
+
+    private static string GetSignalIcon(int strength)
+    {
+        return strength switch
+        {
+            >= 75 => "📶",
+            >= 50 => "📶",
+            >= 25 => "📡",
+            _ => "📉"
+        };
+    }
+
+    public void Dispose()
+    {
+        StateContainer.OnStateChanged -= OnStateChanged;
+    }
+}

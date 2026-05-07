@@ -1,0 +1,10 @@
+namespace Docker_Wifi.Models;
+
+public sealed record WifiState
+{
+    public List<WifiNetwork> Networks { get; init; } = new();
+    public List<WifiClient> Clients { get; init; } = new();
+    public DateTime LastUpdated { get; init; } = DateTime.UtcNow;
+    public bool IsScanning { get; init; }
+    public bool IsConnecting { get; init; }
+}

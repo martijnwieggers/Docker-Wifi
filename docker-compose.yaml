@@ -1,0 +1,45 @@
+services:
+  wifi-manager:
+    image: wifi-manager:latest
+    container_name: wifi-manager
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+
+    # Required for accessing host network interfaces (wlan0, wlan1)
+    network_mode: host
+
+    # Required for network management operations
+    privileged: true
+
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - TZ=Europe/Amsterdam
+      - DOTNET_RUNNING_IN_CONTAINER=true
+
+    volumes:
+      # Persist logs
+      - ./logs:/app/logs
+
+      # Access to NetworkManager
+      - /var/run/dbus:/var/run/dbus:ro
+      - /etc/NetworkManager:/etc/NetworkManager:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits for Raspberry Pi
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M

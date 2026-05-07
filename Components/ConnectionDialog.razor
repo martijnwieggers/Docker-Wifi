@@ -1,0 +1,122 @@
+@using Docker_Wifi.Models
+@using Docker_Wifi.Services
+
+@inject IWifiConnectionService ConnectionService
+@inject ILogger<ConnectionDialog> Logger
+
+<div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Connect to WiFi</h5>
+                <button type="button" class="btn-close" @onclick="OnCancel" disabled="@_isConnecting"></button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <div class="alert alert-danger" role="alert">
+                        @_errorMessage
+                    </div>
+                }
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Network</label>
+                    <input type="text" class="form-control" value="@Network.SSID" disabled />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Security</label>
+                    <input type="text" class="form-control" value="@Network.Security" disabled />
+                </div>
+
+                @if (Network.Security != "Open" && !Network.Security.Contains("--"))
+                {
+                    <div class="mb-3">
+                        <label for="password" class="form-label fw-bold">Password</label>
+                        <input type="password" 
+                               class="form-control" 
+                               id="password" 
+                               @bind="_password"
+                               @bind:event="oninput"
+                               disabled="@_isConnecting"
+                               placeholder="Enter network password" />
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @onclick="OnCancel" disabled="@_isConnecting">
+                    Cancel
+                </button>
+                <button type="button" class="btn btn-primary" @onclick="OnConnect" disabled="@_isConnecting">
+                    @if (_isConnecting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        <span>Connecting...</span>
+                    }
+                    else
+                    {
+                        <span>Connect</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public required WifiNetwork Network { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public EventCallback<WifiConnectionResult> OnConnected { get; set; }
+
+    private string _password = string.Empty;
+    private bool _isConnecting;
+    private string? _errorMessage;
+
+    private async Task OnConnect()
+    {
+        _isConnecting = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var request = new WifiConnectionRequest
+            {
+                SSID = Network.SSID,
+                Password = _password
+            };
+
+            var result = await ConnectionService.ConnectAsync(request);
+
+            if (result.Success)
+            {
+                await OnConnected.InvokeAsync(result);
+                await OnClose.InvokeAsync();
+            }
+            else
+            {
+                _errorMessage = result.Message;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error connecting to network");
+            _errorMessage = $"Connection error: {ex.Message}";
+        }
+        finally
+        {
+            _isConnecting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnCancel()
+    {
+        await OnClose.InvokeAsync();
+    }
+}

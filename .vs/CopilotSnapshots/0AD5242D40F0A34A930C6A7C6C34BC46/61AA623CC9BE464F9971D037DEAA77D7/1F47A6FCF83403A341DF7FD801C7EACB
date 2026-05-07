@@ -1,0 +1,63 @@
+﻿using Docker_Wifi.Background;
+using Docker_Wifi.Components;
+using Docker_Wifi.Helpers;
+using Docker_Wifi.Services;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+
+// WiFi State Container (Singleton for shared state)
+builder.Services.AddSingleton<WifiStateContainer>();
+
+// Register services based on OS
+if (LinuxDetectionHelper.IsLinux)
+{
+    // Linux: Real implementations
+    builder.Services.AddScoped<IWifiShellService, WifiShellService>();
+    builder.Services.AddScoped<IWifiScannerService, WifiScannerService>();
+    builder.Services.AddScoped<IWifiConnectionService, WifiConnectionService>();
+    builder.Services.AddScoped<IAccessPointClientService, AccessPointClientService>();
+}
+else
+{
+    // Windows: Mock implementations for development
+    builder.Services.AddScoped<IWifiShellService, WifiShellService>();
+    builder.Services.AddScoped<IWifiScannerService, MockWifiScannerService>();
+    builder.Services.AddScoped<IWifiConnectionService, MockWifiConnectionService>();
+    builder.Services.AddScoped<IAccessPointClientService, MockAccessPointClientService>();
+}
+
+// Background Services
+builder.Services.AddHostedService<WifiMonitoringBackgroundService>();
+
+// Logging
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Error", createScopeForErrors: true);
+    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
+    app.UseHsts();
+}
+
+app.UseHttpsRedirection();
+
+app.UseStaticFiles();
+app.UseAntiforgery();
+
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
+
+// Log startup information
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("WiFi Management Application starting on {Platform}", LinuxDetectionHelper.GetPlatformInfo());
+
+app.Run();
