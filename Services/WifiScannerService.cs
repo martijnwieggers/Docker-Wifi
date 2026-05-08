@@ -36,21 +36,29 @@ public sealed class WifiScannerService : IWifiScannerService
             // Small delay to allow scan to complete
             await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
 
-            // Get the scan results
-            var result = await _shellService.ExecuteCommandAsync(
+            // Run network list and connected-SSID lookup in parallel
+            var listTask = _shellService.ExecuteCommandAsync(
                 "nmcli",
                 ["-t", "-f", "SSID,SIGNAL,SECURITY,CHAN,IN-USE", "device", "wifi", "list", "ifname", WlanInterface],
                 TimeSpan.FromSeconds(15),
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
+
+            var connectedSsidTask = GetConnectedSsidAsync(cancellationToken);
+
+            await Task.WhenAll(listTask, connectedSsidTask).ConfigureAwait(false);
+
+            var result = listTask.Result;
+            var connectedSsid = connectedSsidTask.Result;
 
             if (!result.Success)
             {
                 throw new WifiScanException($"nmcli scan failed: {result.StdErr}");
             }
 
-            var networks = ParseScanOutput(result.StdOut);
+            var networks = ParseScanOutput(result.StdOut, connectedSsid);
 
-            _logger.LogInformation("Found {Count} WiFi networks on {Interface}", networks.Count, WlanInterface);
+            _logger.LogInformation("Found {Count} WiFi networks on {Interface}, connected: {Connected}",
+                networks.Count, WlanInterface, connectedSsid ?? "none");
 
             return networks;
         }
@@ -61,7 +69,38 @@ public sealed class WifiScannerService : IWifiScannerService
         }
     }
 
-    private List<WifiNetwork> ParseScanOutput(string output)
+    // Uses 'iw dev wlan0 link' to get the actual SSID the interface is associated with.
+    // This is more reliable than nmcli's IN-USE column, which can be misaligned when
+    // the terse-mode colon separator appears inside field values (e.g. security strings).
+    private async Task<string?> GetConnectedSsidAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _shellService.ExecuteCommandAsync(
+                "iw",
+                ["dev", WlanInterface, "link"],
+                TimeSpan.FromSeconds(5),
+                cancellationToken).ConfigureAwait(false);
+
+            if (!result.Success)
+                return null;
+
+            foreach (var line in result.StdOut.Split('\n'))
+            {
+                var trimmed = line.Trim();
+                if (trimmed.StartsWith("SSID:", StringComparison.OrdinalIgnoreCase))
+                    return trimmed["SSID:".Length..].Trim();
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private List<WifiNetwork> ParseScanOutput(string output, string? connectedSsid)
     {
         var networks = new List<WifiNetwork>();
         var seenSsids = new HashSet<string>();
@@ -109,7 +148,10 @@ public sealed class WifiScannerService : IWifiScannerService
                     channel = 0;
                 }
 
-                var isConnected = parts[4].Trim() == "*";
+                // IN-USE (*) is a fallback; connectedSsid from 'iw dev link' is authoritative
+                var isConnected = parts[4].Trim() == "*" ||
+                                  (!string.IsNullOrEmpty(connectedSsid) &&
+                                   ssid.Equals(connectedSsid, StringComparison.OrdinalIgnoreCase));
 
                 networks.Add(new WifiNetwork
                 {
