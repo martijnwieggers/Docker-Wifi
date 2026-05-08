@@ -15,6 +15,10 @@ services:
     # Required for network management operations
     privileged: true
 
+    # Required for shutdown: makes PID 1 refer to the host's init (systemd),
+    # so nsenter -t 1 correctly enters the host's namespaces.
+    pid: host
+
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:8080
