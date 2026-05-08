@@ -41,33 +41,27 @@ public sealed class WifiConnectionService : IWifiConnectionService
 
         try
         {
-            string[] arguments;
-            if (string.IsNullOrEmpty(request.Password))
+            ShellCommandResult result;
+
+            if (request.IsEnterprise)
             {
-                _logger.LogDebug("Connecting to open network");
-                arguments = ["device", "wifi", "connect", request.SSID, "ifname", WlanInterface];
+                result = await ConnectEnterpriseAsync(request, cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                _logger.LogDebug("Connecting to secured network");
-                arguments = ["device", "wifi", "connect", request.SSID, "password", request.Password, "ifname", WlanInterface];
+                result = await ConnectPersonalAsync(request, cancellationToken).ConfigureAwait(false);
             }
-
-            var result = await _shellService.ExecuteCommandAsync(
-                "nmcli",
-                arguments,
-                TimeSpan.FromSeconds(30),
-                cancellationToken).ConfigureAwait(false);
 
             if (result.Success)
             {
                 _logger.LogInformation("Successfully connected to WiFi network: {SSID}", request.SSID);
 
-                // Verify connection
                 await Task.Delay(2000, cancellationToken).ConfigureAwait(false);
                 var currentConnection = await GetCurrentConnectionAsync(cancellationToken).ConfigureAwait(false);
 
-                if (currentConnection?.Equals(request.SSID, StringComparison.OrdinalIgnoreCase) == true)
+                if (currentConnection != null &&
+                    (currentConnection.Equals(request.SSID, StringComparison.OrdinalIgnoreCase) ||
+                     currentConnection.Contains(request.SSID, StringComparison.OrdinalIgnoreCase)))
                 {
                     return new WifiConnectionResult
                     {
@@ -75,22 +69,20 @@ public sealed class WifiConnectionService : IWifiConnectionService
                         Message = $"Successfully connected to {request.SSID}"
                     };
                 }
-                else
-                {
-                    _logger.LogWarning("Connected but verification failed. Expected: {Expected}, Got: {Actual}",
-                        request.SSID, currentConnection);
 
-                    return new WifiConnectionResult
-                    {
-                        Success = true,
-                        Message = $"Connected to {request.SSID} but verification uncertain",
-                        RequiresReconnect = false
-                    };
-                }
+                _logger.LogWarning("Connected but verification uncertain. Expected: {Expected}, Got: {Actual}",
+                    request.SSID, currentConnection);
+
+                return new WifiConnectionResult
+                {
+                    Success = true,
+                    Message = $"Connected to {request.SSID} but verification uncertain",
+                    RequiresReconnect = false
+                };
             }
             else
             {
-                var errorMessage = ParseConnectionError(result.StdErr);
+                var errorMessage = ParseConnectionError(result.StdErr, request.IsEnterprise);
                 _logger.LogWarning("Failed to connect to {SSID}: {Error}", request.SSID, errorMessage);
 
                 return new WifiConnectionResult
@@ -112,6 +104,74 @@ public sealed class WifiConnectionService : IWifiConnectionService
                 ErrorCode = "EXCEPTION"
             };
         }
+    }
+
+    private async Task<ShellCommandResult> ConnectPersonalAsync(
+        WifiConnectionRequest request,
+        CancellationToken cancellationToken)
+    {
+        string[] arguments;
+        if (string.IsNullOrEmpty(request.Password))
+        {
+            _logger.LogDebug("Connecting to open network");
+            arguments = ["device", "wifi", "connect", request.SSID, "ifname", WlanInterface];
+        }
+        else
+        {
+            _logger.LogDebug("Connecting to secured network");
+            arguments = ["device", "wifi", "connect", request.SSID, "password", request.Password, "ifname", WlanInterface];
+        }
+
+        return await _shellService.ExecuteCommandAsync(
+            "nmcli", arguments, TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<ShellCommandResult> ConnectEnterpriseAsync(
+        WifiConnectionRequest request,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogDebug("Connecting to enterprise network (PEAP/MSCHAPv2): {SSID}", request.SSID);
+
+        // Remove any existing connection profile with this name to start fresh
+        await _shellService.ExecuteCommandAsync(
+            "nmcli",
+            ["connection", "delete", request.SSID],
+            TimeSpan.FromSeconds(10),
+            cancellationToken).ConfigureAwait(false);
+
+        // Build connection-add arguments
+        var addArgs = new List<string>
+        {
+            "connection", "add",
+            "type", "wifi",
+            "con-name", request.SSID,
+            "ifname", WlanInterface,
+            "ssid", request.SSID,
+            "wifi-sec.key-mgmt", "wpa-eap",
+            "802-1x.eap", "peap",
+            "802-1x.identity", request.Username,
+            "802-1x.password", request.Password,
+            "802-1x.phase2-auth", "mschapv2"
+        };
+
+        if (!string.IsNullOrWhiteSpace(request.AnonymousIdentity))
+        {
+            addArgs.Add("802-1x.anonymous-identity");
+            addArgs.Add(request.AnonymousIdentity);
+        }
+
+        var addResult = await _shellService.ExecuteCommandAsync(
+            "nmcli", addArgs, TimeSpan.FromSeconds(15), cancellationToken).ConfigureAwait(false);
+
+        if (!addResult.Success)
+            return addResult;
+
+        // Activate the connection
+        return await _shellService.ExecuteCommandAsync(
+            "nmcli",
+            ["connection", "up", request.SSID, "ifname", WlanInterface],
+            TimeSpan.FromSeconds(45),
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<WifiConnectionResult> DisconnectAsync(CancellationToken cancellationToken = default)
@@ -232,12 +292,21 @@ public sealed class WifiConnectionService : IWifiConnectionService
         }
     }
 
-    private static string ParseConnectionError(string stderr)
+    private static string ParseConnectionError(string stderr, bool isEnterprise = false)
     {
         if (string.IsNullOrWhiteSpace(stderr))
-        {
             return "Connection failed";
+
+        if (isEnterprise &&
+            (stderr.Contains("802.1x", StringComparison.OrdinalIgnoreCase) ||
+             stderr.Contains("authentication", StringComparison.OrdinalIgnoreCase) ||
+             stderr.Contains("EAP", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Gebruikersnaam of wachtwoord onjuist";
         }
+
+        if (isEnterprise && stderr.Contains("certificate", StringComparison.OrdinalIgnoreCase))
+            return "Certificaatfout — controleer de serverinstellingen";
 
         if (stderr.Contains("Secrets were required", StringComparison.OrdinalIgnoreCase) ||
             stderr.Contains("wrong password", StringComparison.OrdinalIgnoreCase))
@@ -246,20 +315,26 @@ public sealed class WifiConnectionService : IWifiConnectionService
         }
 
         if (stderr.Contains("No network with SSID", StringComparison.OrdinalIgnoreCase))
-        {
             return "Network not found";
-        }
 
         if (stderr.Contains("timeout", StringComparison.OrdinalIgnoreCase))
-        {
             return "Connection timeout";
-        }
 
-        return stderr.Length > 100 ? stderr.Substring(0, 100) + "..." : stderr;
+        return stderr.Length > 100 ? stderr[..100] + "..." : stderr;
     }
 
     private static string DetermineErrorCode(string stderr)
     {
+        if (stderr.Contains("802.1x", StringComparison.OrdinalIgnoreCase) ||
+            stderr.Contains("EAP", StringComparison.OrdinalIgnoreCase) ||
+            stderr.Contains("authentication", StringComparison.OrdinalIgnoreCase))
+        {
+            return "AUTH_FAILED";
+        }
+
+        if (stderr.Contains("certificate", StringComparison.OrdinalIgnoreCase))
+            return "CERT_ERROR";
+
         if (stderr.Contains("Secrets were required", StringComparison.OrdinalIgnoreCase) ||
             stderr.Contains("wrong password", StringComparison.OrdinalIgnoreCase))
         {
@@ -267,14 +342,10 @@ public sealed class WifiConnectionService : IWifiConnectionService
         }
 
         if (stderr.Contains("No network with SSID", StringComparison.OrdinalIgnoreCase))
-        {
             return "NETWORK_NOT_FOUND";
-        }
 
         if (stderr.Contains("timeout", StringComparison.OrdinalIgnoreCase))
-        {
             return "TIMEOUT";
-        }
 
         return "UNKNOWN";
     }
@@ -298,8 +369,23 @@ public sealed class MockWifiConnectionService : IWifiConnectionService
 
         await Task.Delay(2000, cancellationToken).ConfigureAwait(false);
 
-        // Simulate occasional failures
-        if (request.SSID.Contains("Secure", StringComparison.OrdinalIgnoreCase) && 
+        // Enterprise authentication simulation
+        if (request.IsEnterprise)
+        {
+            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+            {
+                return new WifiConnectionResult
+                {
+                    Success = false,
+                    Message = "Gebruikersnaam of wachtwoord onjuist",
+                    ErrorCode = "AUTH_FAILED"
+                };
+            }
+        }
+
+        // Simulate occasional failures for personal networks
+        if (!request.IsEnterprise &&
+            request.SSID.Contains("Secure", StringComparison.OrdinalIgnoreCase) &&
             request.Password.Length < 8)
         {
             return new WifiConnectionResult

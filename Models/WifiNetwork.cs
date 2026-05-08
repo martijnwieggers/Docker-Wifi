@@ -7,4 +7,5 @@ public sealed class WifiNetwork
     public required string Security { get; init; }
     public int Channel { get; init; }
     public bool IsConnected { get; init; }
+    public bool IsEnterprise { get; init; }
 }

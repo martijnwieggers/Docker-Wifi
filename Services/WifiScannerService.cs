@@ -39,7 +39,7 @@ public sealed class WifiScannerService : IWifiScannerService
             // Run network list and connected-SSID lookup in parallel
             var listTask = _shellService.ExecuteCommandAsync(
                 "nmcli",
-                ["-t", "-f", "SSID,SIGNAL,SECURITY,CHAN,IN-USE", "device", "wifi", "list", "ifname", WlanInterface],
+                ["-t", "-f", "SSID,SIGNAL,SECURITY,CHAN,IN-USE,RSN-FLAGS", "device", "wifi", "list", "ifname", WlanInterface],
                 TimeSpan.FromSeconds(15),
                 cancellationToken);
 
@@ -153,13 +153,20 @@ public sealed class WifiScannerService : IWifiScannerService
                                   (!string.IsNullOrEmpty(connectedSsid) &&
                                    ssid.Equals(connectedSsid, StringComparison.OrdinalIgnoreCase));
 
+                // RSN-FLAGS (index 5+) contain "802.1x" for WPA-Enterprise networks
+                var rsnFlags = parts.Length > 5
+                    ? string.Join(":", parts[5..]).ToLowerInvariant()
+                    : string.Empty;
+                var isEnterprise = rsnFlags.Contains("802.1x");
+
                 networks.Add(new WifiNetwork
                 {
                     SSID = ssid,
                     SignalStrength = signal,
                     Security = security,
                     Channel = channel,
-                    IsConnected = isConnected
+                    IsConnected = isConnected,
+                    IsEnterprise = isEnterprise
                 });
 
                 seenSsids.Add(ssid);
@@ -193,6 +200,7 @@ public sealed class MockWifiScannerService : IWifiScannerService
         {
             new() { SSID = "Home_Network_5G", SignalStrength = 85 + _random.Next(-5, 5), Security = "WPA2", Channel = 36, IsConnected = true },
             new() { SSID = "Home_Network_2.4G", SignalStrength = 72 + _random.Next(-5, 5), Security = "WPA2", Channel = 6, IsConnected = false },
+            new() { SSID = "eduroam", SignalStrength = 70 + _random.Next(-5, 5), Security = "WPA2", Channel = 6, IsConnected = false, IsEnterprise = true },
             new() { SSID = "Neighbor_WiFi", SignalStrength = 45 + _random.Next(-5, 5), Security = "WPA2/WPA3", Channel = 11, IsConnected = false },
             new() { SSID = "Guest_Network", SignalStrength = 62 + _random.Next(-5, 5), Security = "Open", Channel = 1, IsConnected = false },
             new() { SSID = "Office_Secure", SignalStrength = 38 + _random.Next(-5, 5), Security = "WPA3", Channel = 48, IsConnected = false }

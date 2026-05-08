@@ -8,7 +8,17 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Connect to WiFi</h5>
+                <h5 class="modal-title">
+                    @if (Network.IsEnterprise)
+                    {
+                        <i class="bi bi-shield-lock me-2 text-warning"></i>
+                    }
+                    else
+                    {
+                        <i class="bi bi-wifi me-2"></i>
+                    }
+                    Connect to WiFi
+                </h5>
                 <button type="button" class="btn-close" @onclick="OnCancel" disabled="@_isConnecting"></button>
             </div>
             <div class="modal-body">
@@ -26,16 +36,58 @@
 
                 <div class="mb-3">
                     <label class="form-label fw-bold">Security</label>
-                    <input type="text" class="form-control" value="@Network.Security" disabled />
+                    <div class="d-flex align-items-center gap-2">
+                        <input type="text" class="form-control" value="@Network.Security" disabled />
+                        @if (Network.IsEnterprise)
+                        {
+                            <span class="badge bg-warning text-dark text-nowrap">Enterprise</span>
+                        }
+                    </div>
                 </div>
 
-                @if (Network.Security != "Open" && !Network.Security.Contains("--"))
+                @if (Network.IsEnterprise)
+                {
+                    <div class="alert alert-info py-2 small mb-3">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Authenticatie: <strong>PEAP / MSCHAPv2</strong>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="username" class="form-label fw-bold">Gebruikersnaam</label>
+                        <input type="text" class="form-control" id="username"
+                               @bind="_username" @bind:event="oninput"
+                               disabled="@_isConnecting"
+                               placeholder="gebruiker@instelling.nl"
+                               autocomplete="username" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="password" class="form-label fw-bold">Wachtwoord</label>
+                        <input type="password" class="form-control" id="password"
+                               @bind="_password" @bind:event="oninput"
+                               disabled="@_isConnecting"
+                               placeholder="Wachtwoord"
+                               autocomplete="current-password" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="anonid" class="form-label fw-bold">
+                            Anonieme identiteit
+                            <span class="text-muted fw-normal">(optioneel)</span>
+                        </label>
+                        <input type="text" class="form-control" id="anonid"
+                               @bind="_anonymousIdentity" @bind:event="oninput"
+                               disabled="@_isConnecting"
+                               placeholder="anonymous@instelling.nl" />
+                    </div>
+                }
+                else if (Network.Security != "Open" && !Network.Security.Contains("--"))
                 {
                     <div class="mb-3">
                         <label for="password" class="form-label fw-bold">Password</label>
-                        <input type="password" 
-                               class="form-control" 
-                               id="password" 
+                        <input type="password"
+                               class="form-control"
+                               id="password"
                                @bind="_password"
                                @bind:event="oninput"
                                disabled="@_isConnecting"
@@ -74,6 +126,8 @@
     public EventCallback<WifiConnectionResult> OnConnected { get; set; }
 
     private string _password = string.Empty;
+    private string _username = string.Empty;
+    private string _anonymousIdentity = string.Empty;
     private bool _isConnecting;
     private string? _errorMessage;
 
@@ -88,7 +142,10 @@
             var request = new WifiConnectionRequest
             {
                 SSID = Network.SSID,
-                Password = _password
+                Password = _password,
+                IsEnterprise = Network.IsEnterprise,
+                Username = _username,
+                AnonymousIdentity = _anonymousIdentity
             };
 
             var result = await ConnectionService.ConnectAsync(request);
