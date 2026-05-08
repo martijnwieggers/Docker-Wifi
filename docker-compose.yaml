@@ -7,7 +7,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    restart: unless-stopped
+    restart: always
 
     # Required for accessing host network interfaces (wlan0, wlan1)
     network_mode: host
