@@ -4,6 +4,7 @@
 @using Docker_Wifi.Models
 @rendermode InteractiveServer
 @inject WifiStateContainer StateContainer
+@inject IWifiShellService ShellService
 
 @implements IDisposable
 
@@ -171,10 +172,42 @@
             </div>
         </div>
     </div>
+
+    <div class="row mt-2">
+        <div class="col d-flex justify-content-end">
+            @if (!_showShutdownConfirm)
+            {
+                <button class="btn btn-outline-danger" @onclick="() => _showShutdownConfirm = true">
+                    <i class="bi bi-power me-2"></i>Raspberry Pi afsluiten
+                </button>
+            }
+            else
+            {
+                <div class="d-flex align-items-center gap-2">
+                    <span class="text-danger fw-bold">
+                        <i class="bi bi-exclamation-triangle me-1"></i>Weet je het zeker?
+                    </span>
+                    <button class="btn btn-danger" @onclick="ShutdownAsync" disabled="@_isShuttingDown">
+                        @if (_isShuttingDown)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                        }
+                        Ja, afsluiten
+                    </button>
+                    <button class="btn btn-secondary" @onclick="() => _showShutdownConfirm = false"
+                            disabled="@_isShuttingDown">
+                        Annuleren
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
 </div>
 
 @code {
     private WifiState _state = new();
+    private bool _showShutdownConfirm;
+    private bool _isShuttingDown;
 
     protected override void OnInitialized()
     {
@@ -186,6 +219,17 @@
     {
         _state = StateContainer.State;
         InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ShutdownAsync()
+    {
+        _isShuttingDown = true;
+        StateHasChanged();
+
+        await ShellService.ExecuteCommandAsync(
+            "shutdown",
+            ["-h", "now"],
+            TimeSpan.FromSeconds(10));
     }
 
     public void Dispose()
