@@ -166,12 +166,53 @@ public sealed class WifiConnectionService : IWifiConnectionService
         if (!addResult.Success)
             return addResult;
 
-        // Activate the connection
-        return await _shellService.ExecuteCommandAsync(
+        // Dispatch connection without blocking — NetworkManager handles authentication async.
+        // nmcli connection up blocks until fully established (can take 60-90s for eduroam),
+        // so we use --wait 0 to return immediately and poll for device state ourselves.
+        var upResult = await _shellService.ExecuteCommandAsync(
             "nmcli",
-            ["connection", "up", request.SSID, "ifname", WlanInterface],
-            TimeSpan.FromSeconds(45),
+            ["--wait", "0", "connection", "up", request.SSID, "ifname", WlanInterface],
+            TimeSpan.FromSeconds(10),
             cancellationToken).ConfigureAwait(false);
+
+        if (!upResult.Success)
+            return upResult;
+
+        return await PollForConnectionAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<ShellCommandResult> PollForConnectionAsync(CancellationToken cancellationToken)
+    {
+        // Poll device state every 5 seconds for up to 60 seconds
+        for (int attempt = 0; attempt < 12; attempt++)
+        {
+            await Task.Delay(5000, cancellationToken).ConfigureAwait(false);
+
+            var stateResult = await _shellService.ExecuteCommandAsync(
+                "nmcli",
+                ["-t", "-f", "GENERAL.STATE", "device", "show", WlanInterface],
+                TimeSpan.FromSeconds(5),
+                cancellationToken).ConfigureAwait(false);
+
+            if (!stateResult.Success)
+                continue;
+
+            var state = stateResult.StdOut;
+            _logger.LogDebug("Enterprise poll attempt {Attempt}: wlan0 state = {State}", attempt + 1, state.Trim());
+
+            if (state.Contains("100 (connected)", StringComparison.OrdinalIgnoreCase))
+            {
+                return new ShellCommandResult { ExitCode = 0, StdOut = "Connected", StdErr = string.Empty };
+            }
+
+            if (state.Contains("120 (failed)", StringComparison.OrdinalIgnoreCase) ||
+                state.Contains("failed", StringComparison.OrdinalIgnoreCase))
+            {
+                return new ShellCommandResult { ExitCode = 1, StdOut = string.Empty, StdErr = "802.1x authentication failed" };
+            }
+        }
+
+        return new ShellCommandResult { ExitCode = 1, StdOut = string.Empty, StdErr = "Connection timeout" };
     }
 
     public async Task<WifiConnectionResult> DisconnectAsync(CancellationToken cancellationToken = default)
