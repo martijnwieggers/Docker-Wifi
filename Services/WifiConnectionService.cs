@@ -9,6 +9,7 @@ public interface IWifiConnectionService
     Task<WifiConnectionResult> ConnectAsync(WifiConnectionRequest request, CancellationToken cancellationToken = default);
     Task<WifiConnectionResult> DisconnectAsync(CancellationToken cancellationToken = default);
     Task<string?> GetCurrentConnectionAsync(CancellationToken cancellationToken = default);
+    Task<string?> GetWlan0IpAddressAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class WifiConnectionService : IWifiConnectionService
@@ -203,6 +204,40 @@ public sealed class WifiConnectionService : IWifiConnectionService
         }
     }
 
+    public async Task<string?> GetWlan0IpAddressAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var result = await _shellService.ExecuteCommandAsync(
+                "nmcli",
+                $"-t -f IP4.ADDRESS device show {WlanInterface}",
+                TimeSpan.FromSeconds(10),
+                cancellationToken).ConfigureAwait(false);
+
+            if (!result.Success)
+                return null;
+
+            foreach (var line in result.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (line.StartsWith("IP4.ADDRESS", StringComparison.OrdinalIgnoreCase))
+                {
+                    var address = line[(line.IndexOf(':') + 1)..].Trim();
+                    if (string.IsNullOrEmpty(address) || address == "--")
+                        return null;
+                    var slash = address.IndexOf('/');
+                    return slash >= 0 ? address[..slash] : address;
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get wlan0 IP address");
+            return null;
+        }
+    }
+
     private static string ParseConnectionError(string stderr)
     {
         if (string.IsNullOrWhiteSpace(stderr))
@@ -308,5 +343,11 @@ public sealed class MockWifiConnectionService : IWifiConnectionService
     public Task<string?> GetCurrentConnectionAsync(CancellationToken cancellationToken = default)
     {
         return Task.FromResult(_currentConnection);
+    }
+
+    public Task<string?> GetWlan0IpAddressAsync(CancellationToken cancellationToken = default)
+    {
+        var ip = _currentConnection != null ? "192.168.1.42" : null;
+        return Task.FromResult<string?>(ip);
     }
 }

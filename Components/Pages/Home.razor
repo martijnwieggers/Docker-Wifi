@@ -57,6 +57,31 @@
                         <strong>Interface:</strong> <code>wlan0</code>
                     </div>
                     <div class="mb-2">
+                        <strong>Verbonden met:</strong>
+                        @{
+                            var connectedNetwork = _state.Networks.FirstOrDefault(n => n.IsConnected);
+                        }
+                        @if (connectedNetwork != null)
+                        {
+                            <span class="badge bg-success ms-1">@connectedNetwork.SSID</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted ms-1">Niet verbonden</span>
+                        }
+                    </div>
+                    <div class="mb-2">
+                        <strong>IP-adres:</strong>
+                        @if (!string.IsNullOrEmpty(_state.Wlan0IpAddress))
+                        {
+                            <code class="ms-1">@_state.Wlan0IpAddress</code>
+                        }
+                        else
+                        {
+                            <span class="text-muted ms-1">-</span>
+                        }
+                    </div>
+                    <div class="mb-2">
                         <strong>Networks Found:</strong> @_state.Networks.Count
                     </div>
                     <div class="mb-3">

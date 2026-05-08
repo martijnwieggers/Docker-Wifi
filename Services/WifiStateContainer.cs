@@ -85,6 +85,20 @@ public sealed class WifiStateContainer
         NotifyStateChanged();
     }
 
+    public async Task UpdateWlan0IpAsync(string? ipAddress)
+    {
+        await _lock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            _state = _state with { Wlan0IpAddress = ipAddress };
+        }
+        finally
+        {
+            _lock.Release();
+        }
+        NotifyStateChanged();
+    }
+
     private void NotifyStateChanged()
     {
         OnStateChanged?.Invoke();

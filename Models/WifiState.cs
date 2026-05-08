@@ -7,4 +7,5 @@ public sealed record WifiState
     public DateTime LastUpdated { get; init; } = DateTime.UtcNow;
     public bool IsScanning { get; init; }
     public bool IsConnecting { get; init; }
+    public string? Wlan0IpAddress { get; init; }
 }

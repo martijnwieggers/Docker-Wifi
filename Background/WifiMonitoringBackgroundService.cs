@@ -122,6 +122,7 @@ public sealed class WifiMonitoringBackgroundService : BackgroundService
     {
         using var scope = _serviceProvider.CreateScope();
         var scannerService = scope.ServiceProvider.GetRequiredService<IWifiScannerService>();
+        var connectionService = scope.ServiceProvider.GetRequiredService<IWifiConnectionService>();
         var stateContainer = scope.ServiceProvider.GetRequiredService<WifiStateContainer>();
 
         try
@@ -129,9 +130,13 @@ public sealed class WifiMonitoringBackgroundService : BackgroundService
             await stateContainer.SetScanningAsync(true).ConfigureAwait(false);
 
             var networks = await scannerService.ScanNetworksAsync(cancellationToken).ConfigureAwait(false);
-            await stateContainer.UpdateNetworksAsync(networks, false).ConfigureAwait(false);
+            var ipAddress = await connectionService.GetWlan0IpAddressAsync(cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Refreshed WiFi networks: {Count} networks found", networks.Count);
+            await stateContainer.UpdateNetworksAsync(networks, false).ConfigureAwait(false);
+            await stateContainer.UpdateWlan0IpAsync(ipAddress).ConfigureAwait(false);
+
+            _logger.LogDebug("Refreshed WiFi networks: {Count} networks found, wlan0 IP: {IP}",
+                networks.Count, ipAddress ?? "none");
         }
         finally
         {
