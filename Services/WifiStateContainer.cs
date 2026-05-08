@@ -5,25 +5,14 @@ namespace Docker_Wifi.Services;
 public sealed class WifiStateContainer
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
-    private WifiState _state = new();
+    private volatile WifiState _state = new();
 
     public event Action? OnStateChanged;
 
-    public WifiState State
-    {
-        get
-        {
-            _lock.Wait();
-            try
-            {
-                return _state;
-            }
-            finally
-            {
-                _lock.Release();
-            }
-        }
-    }
+    // WifiState is an immutable record; reference reads are atomic in .NET,
+    // so no lock is needed here — avoids deadlock when callbacks read State
+    // while an Update method holds the lock.
+    public WifiState State => _state;
 
     public async Task UpdateNetworksAsync(List<WifiNetwork> networks, bool isScanning = false)
     {
@@ -36,13 +25,12 @@ public sealed class WifiStateContainer
                 LastUpdated = DateTime.UtcNow,
                 IsScanning = isScanning
             };
-
-            NotifyStateChanged();
         }
         finally
         {
             _lock.Release();
         }
+        NotifyStateChanged();
     }
 
     public async Task UpdateClientsAsync(List<WifiClient> clients)
@@ -55,13 +43,12 @@ public sealed class WifiStateContainer
                 Clients = clients,
                 LastUpdated = DateTime.UtcNow
             };
-
-            NotifyStateChanged();
         }
         finally
         {
             _lock.Release();
         }
+        NotifyStateChanged();
     }
 
     public async Task SetScanningAsync(bool isScanning)
@@ -73,13 +60,12 @@ public sealed class WifiStateContainer
             {
                 IsScanning = isScanning
             };
-
-            NotifyStateChanged();
         }
         finally
         {
             _lock.Release();
         }
+        NotifyStateChanged();
     }
 
     public async Task SetConnectingAsync(bool isConnecting)
@@ -91,13 +77,12 @@ public sealed class WifiStateContainer
             {
                 IsConnecting = isConnecting
             };
-
-            NotifyStateChanged();
         }
         finally
         {
             _lock.Release();
         }
+        NotifyStateChanged();
     }
 
     private void NotifyStateChanged()
