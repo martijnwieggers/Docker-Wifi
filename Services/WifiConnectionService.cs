@@ -1,5 +1,4 @@
 using Docker_Wifi.Exceptions;
-using Docker_Wifi.Helpers;
 using Docker_Wifi.Models;
 
 namespace Docker_Wifi.Services;
@@ -42,21 +41,16 @@ public sealed class WifiConnectionService : IWifiConnectionService
 
         try
         {
-            var escapedSsid = CommandLineHelper.EscapeArgument(request.SSID);
-            var escapedPassword = CommandLineHelper.EscapeArgument(request.Password);
-
-            string arguments;
+            string[] arguments;
             if (string.IsNullOrEmpty(request.Password))
             {
-                // Open network
-                arguments = $"device wifi connect {escapedSsid} ifname {WlanInterface}";
                 _logger.LogDebug("Connecting to open network");
+                arguments = ["device", "wifi", "connect", request.SSID, "ifname", WlanInterface];
             }
             else
             {
-                // Secured network
-                arguments = $"device wifi connect {escapedSsid} password {escapedPassword} ifname {WlanInterface}";
                 _logger.LogDebug("Connecting to secured network");
+                arguments = ["device", "wifi", "connect", request.SSID, "password", request.Password, "ifname", WlanInterface];
             }
 
             var result = await _shellService.ExecuteCommandAsync(
@@ -128,7 +122,7 @@ public sealed class WifiConnectionService : IWifiConnectionService
         {
             var result = await _shellService.ExecuteCommandAsync(
                 "nmcli",
-                $"device disconnect {WlanInterface}",
+                ["device", "disconnect", WlanInterface],
                 TimeSpan.FromSeconds(15),
                 cancellationToken).ConfigureAwait(false);
 
@@ -170,7 +164,7 @@ public sealed class WifiConnectionService : IWifiConnectionService
         {
             var result = await _shellService.ExecuteCommandAsync(
                 "nmcli",
-                $"-t -f GENERAL.CONNECTION device show {WlanInterface}",
+                ["-t", "-f", "GENERAL.CONNECTION", "device", "show", WlanInterface],
                 TimeSpan.FromSeconds(10),
                 cancellationToken).ConfigureAwait(false);
 
@@ -210,7 +204,7 @@ public sealed class WifiConnectionService : IWifiConnectionService
         {
             var result = await _shellService.ExecuteCommandAsync(
                 "nmcli",
-                $"-t -f IP4.ADDRESS device show {WlanInterface}",
+                ["-t", "-f", "IP4.ADDRESS", "device", "show", WlanInterface],
                 TimeSpan.FromSeconds(10),
                 cancellationToken).ConfigureAwait(false);
 

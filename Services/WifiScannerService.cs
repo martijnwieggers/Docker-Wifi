@@ -1,5 +1,4 @@
 using Docker_Wifi.Exceptions;
-using Docker_Wifi.Helpers;
 using Docker_Wifi.Models;
 
 namespace Docker_Wifi.Services;
@@ -30,7 +29,7 @@ public sealed class WifiScannerService : IWifiScannerService
             // Request rescan first to get fresh data
             await _shellService.ExecuteCommandAsync(
                 "nmcli",
-                $"device wifi rescan ifname {WlanInterface}",
+                ["device", "wifi", "rescan", "ifname", WlanInterface],
                 TimeSpan.FromSeconds(10),
                 cancellationToken).ConfigureAwait(false);
 
@@ -40,7 +39,7 @@ public sealed class WifiScannerService : IWifiScannerService
             // Get the scan results
             var result = await _shellService.ExecuteCommandAsync(
                 "nmcli",
-                $"-t -f SSID,SIGNAL,SECURITY,CHAN,IN-USE device wifi list ifname {WlanInterface}",
+                ["-t", "-f", "SSID,SIGNAL,SECURITY,CHAN,IN-USE", "device", "wifi", "list", "ifname", WlanInterface],
                 TimeSpan.FromSeconds(15),
                 cancellationToken).ConfigureAwait(false);
 

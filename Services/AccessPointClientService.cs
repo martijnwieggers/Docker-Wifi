@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using Docker_Wifi.Helpers;
 using Docker_Wifi.Models;
 
 namespace Docker_Wifi.Services;
@@ -55,7 +54,7 @@ public sealed class AccessPointClientService : IAccessPointClientService
         {
             var result = await _shellService.ExecuteCommandAsync(
                 "iw",
-                $"dev {ApInterface} station dump",
+                ["dev", ApInterface, "station", "dump"],
                 TimeSpan.FromSeconds(10),
                 cancellationToken).ConfigureAwait(false);
 
@@ -138,7 +137,7 @@ public sealed class AccessPointClientService : IAccessPointClientService
             // Try ip neigh first (modern approach)
             var result = await _shellService.ExecuteCommandAsync(
                 "ip",
-                "neigh show",
+                ["neigh", "show"],
                 TimeSpan.FromSeconds(10),
                 cancellationToken).ConfigureAwait(false);
 
@@ -151,7 +150,7 @@ public sealed class AccessPointClientService : IAccessPointClientService
                 // Fallback to arp command
                 result = await _shellService.ExecuteCommandAsync(
                     "arp",
-                    "-n",
+                    ["-n"],
                     TimeSpan.FromSeconds(10),
                     cancellationToken).ConfigureAwait(false);
 

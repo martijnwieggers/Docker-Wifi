@@ -9,7 +9,7 @@ public interface IWifiShellService
 {
     Task<ShellCommandResult> ExecuteCommandAsync(
         string command,
-        string arguments,
+        IEnumerable<string> arguments,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default);
 }
@@ -26,24 +26,26 @@ public sealed class WifiShellService : IWifiShellService
 
     public async Task<ShellCommandResult> ExecuteCommandAsync(
         string command,
-        string arguments,
+        IEnumerable<string> arguments,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
         var effectiveTimeout = timeout ?? DefaultTimeout;
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogDebug("Executing command: {Command} {Arguments}", command, arguments);
+        var argList = arguments.ToList();
+        _logger.LogDebug("Executing command: {Command} {Arguments}", command, string.Join(" ", argList));
 
         var startInfo = new ProcessStartInfo
         {
             FileName = command,
-            Arguments = arguments,
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true
         };
+        foreach (var arg in argList)
+            startInfo.ArgumentList.Add(arg);
 
         try
         {
