@@ -28,6 +28,7 @@ RUN apt-get update && \
     iw \
     iproute2 \
     net-tools \
+    util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy published application

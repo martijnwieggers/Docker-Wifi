@@ -226,9 +226,11 @@
         _isShuttingDown = true;
         StateHasChanged();
 
+        // shutdown inside a container has no systemd (PID 1); use nsenter to
+        // enter the host's namespaces so shutdown reaches the Pi's init system.
         await ShellService.ExecuteCommandAsync(
-            "shutdown",
-            ["-h", "now"],
+            "nsenter",
+            ["-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "shutdown", "-h", "now"],
             TimeSpan.FromSeconds(10));
     }
 
