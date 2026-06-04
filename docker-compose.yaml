@@ -5,8 +5,9 @@ services:
       - "80:8080"
     container_name: wifi-manager
     build:
-      context: .
+      context: .      
       dockerfile: Dockerfile
+      network_mode: host
     restart: always
 
     # Required for accessing host network interfaces (wlan0, wlan1)
@@ -44,8 +45,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 512M
+          cpus: '3.0'
+          memory: 6G
         reservations:
-          cpus: '0.5'
-          memory: 256M
+          cpus: '2'
+          memory: 4G
